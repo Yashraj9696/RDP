@@ -1,0 +1,27 @@
+- name: Start Ngrok in Background
+        run: |
+          Start-Job { & "$env:USERPROFILE\ngrok\ngrok.exe" tcp 3389 }
+
+      - name: Show Connection Info (with Retry)
+        run: |
+          $retries = 0
+          do {
+            Start-Sleep -Seconds 5
+            try {
+              $tunnel = Invoke-RestMethod -Uri http://127.0.0.1:4040/api/tunnels
+              $success = $true
+            } catch {
+              $retries++
+            }
+          } until ($success -or $retries -ge 10)
+
+          if (-not $success) {
+            Write-Error "Ngrok tunnel failed to start."
+            exit 1
+          }
+
+          $url = $tunnel.tunnels[0].public_url -replace "tcp://", ""
+          Write-Output "`n*** RDP Connection Info ***"
+          Write-Output "IP:Port => $url"
+          Write-Output "Username: runneradmin"
+          Write-Output "Password: YourPassword123!"
