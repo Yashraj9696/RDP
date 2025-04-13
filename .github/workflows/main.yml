@@ -10,7 +10,8 @@ jobs:
     steps:
     - name: Download ngrok latest release
       run: |
-        $ngrokUrl = (Invoke-RestMethod -Uri https://api.github.com/repos/ngrok/ngrok/releases/latest).assets | Where-Object { $_.name -match "windows-amd64.zip" } | Select-Object -ExpandProperty browser_download_url
+        $release = Invoke-RestMethod -Uri https://api.github.com/repos/ngrok/ngrok/releases/latest
+        $ngrokUrl = $release.assets | Where-Object { $_.name -match "windows-amd64.zip" } | Select-Object -ExpandProperty browser_download_url
         Invoke-WebRequest $ngrokUrl -OutFile ngrok.zip
 
     - name: Extract ngrok
