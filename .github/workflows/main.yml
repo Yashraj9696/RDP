@@ -9,16 +9,8 @@ jobs:
     timeout-minutes: 9999
 
     steps:
-    - name: Get latest ngrok release URL
-      id: get_url
-      shell: pwsh
-      run: |
-        $release = Invoke-RestMethod -Uri "https://api.github.com/repos/ngrok/ngrok/releases/latest"
-        $asset = $release.assets | Where-Object { $_.name -match "windows-amd64.zip" }
-        echo "url=$($asset.browser_download_url)" >> $env:GITHUB_ENV
-
-    - name: Download ngrok
-      run: Invoke-WebRequest $env:url -OutFile ngrok.zip
+    - name: Download ngrok (latest v3)
+      run: Invoke-WebRequest https://ngrok-agent.s3.amazonaws.com/ngrok-stable-windows-amd64.zip -OutFile ngrok.zip
 
     - name: Extract ngrok
       run: Expand-Archive ngrok.zip
