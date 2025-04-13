@@ -4,17 +4,21 @@ on: [push, workflow_dispatch]
 
 jobs:
   build:
+
     runs-on: windows-latest
     timeout-minutes: 9999
 
     steps:
-    - name: Download ngrok latest release
+    - name: Get latest ngrok release URL
+      id: get_url
+      shell: pwsh
       run: |
-        $url = "https://api.github.com/repos/ngrok/ngrok/releases/latest"
-        $headers = @{ "Accept" = "application/vnd.github.v3+json" }
-        $release = Invoke-RestMethod -Uri $url -Headers $headers
-        $ngrokUrl = $release.assets | Where-Object { $_.name -match "windows-amd64.zip" } | Select-Object -ExpandProperty browser_download_url
-        Invoke-WebRequest $ngrokUrl -OutFile ngrok.zip
+        $release = Invoke-RestMethod -Uri "https://api.github.com/repos/ngrok/ngrok/releases/latest"
+        $asset = $release.assets | Where-Object { $_.name -match "windows-amd64.zip" }
+        echo "url=$($asset.browser_download_url)" >> $env:GITHUB_ENV
+
+    - name: Download ngrok
+      run: Invoke-WebRequest $env:url -OutFile ngrok.zip
 
     - name: Extract ngrok
       run: Expand-Archive ngrok.zip
@@ -24,12 +28,12 @@ jobs:
       env:
         NGROK_AUTH_TOKEN: ${{ secrets.NGROK_AUTH_TOKEN }}
 
-    - name: Enable TS
-      run: Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -name "fDenyTSConnections" -Value 0
+    - name: Enable Terminal Services
+      run: Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name "fDenyTSConnections" -Value 0
 
     - run: Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
 
-    - run: Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -name "UserAuthentication" -Value 1
+    - run: Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -Name "UserAuthentication" -Value 1
 
     - run: Set-LocalUser -Name "runneradmin" -Password (ConvertTo-SecureString -AsPlainText "@cyb3rking" -Force)
 
