@@ -1,33 +1,51 @@
-name: Window 10
+name: Windows RDP
 
-on: [push, workflow_dispatch]
+on:
+  workflow_dispatch:
 
 jobs:
   build:
-
     runs-on: windows-latest
-    timeout-minutes: 9999
 
     steps:
-    - name: Download ngrok (latest v3)
-      run: Invoke-WebRequest https://ngrok-agent.s3.amazonaws.com/ngrok-stable-windows-amd64.zip -OutFile ngrok.zip
+      - name: Setup Ngrok
+        run: |
+          Invoke-WebRequest -Uri https://bin.equinox.io/c/bNyj1mQVY4c/ngrok-stable-windows-amd64.zip -OutFile ngrok.zip
+          Expand-Archive ngrok.zip -DestinationPath "$env:USERPROFILE\ngrok"
+          & "$env:USERPROFILE\ngrok\ngrok.exe" authtoken ${{ secrets.NGROK_AUTH_TOKEN }}
 
-    - name: Extract ngrok
-      run: Expand-Archive ngrok.zip
+      - name: Enable RDP Access
+        run: |
+          Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
+          Set-ItemProperty -Path "HKLM:\System\CurrentControlSet\Control\Terminal Server" -Name "fDenyTSConnections" -Value 0
+          net user runneradmin YourPassword123!
 
-    - name: Auth ngrok
-      run: .\ngrok\ngrok.exe authtoken $Env:NGROK_AUTH_TOKEN
-      env:
-        NGROK_AUTH_TOKEN: ${{ secrets.NGROK_AUTH_TOKEN }}
+      - name: Start Ngrok in Background
+        run: |
+          $ngrokPath = "$env:USERPROFILE\ngrok\ngrok.exe"
+          Start-Job -ScriptBlock { param($path) & $path tcp 3389 } -ArgumentList $ngrokPath
 
-    - name: Enable Terminal Services
-      run: Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name "fDenyTSConnections" -Value 0
+      - name: Show Connection Info (with Retry)
+        run: |
+          $retries = 0
+          $success = $false
+          do {
+            Start-Sleep -Seconds 5
+            try {
+              $tunnel = Invoke-RestMethod -Uri http://127.0.0.1:4040/api/tunnels
+              $success = $true
+            } catch {
+              $retries++
+            }
+          } until ($success -or $retries -ge 10)
 
-    - run: Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
+          if (-not $success) {
+            Write-Host "Ngrok tunnel failed to start after 10 tries."
+            exit 1
+          }
 
-    - run: Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -Name "UserAuthentication" -Value 1
-
-    - run: Set-LocalUser -Name "runneradmin" -Password (ConvertTo-SecureString -AsPlainText "@cyb3rking" -Force)
-
-    - name: Create Tunnel
-      run: .\ngrok\ngrok.exe tcp 3389
+          $url = $tunnel.tunnels[0].public_url -replace "tcp://", ""
+          Write-Host "`n*** RDP Connection Info ***"
+          Write-Host "IP:Port => $url"
+          Write-Host "Username: runneradmin"
+          Write-Host "Password: YourPassword123!"
