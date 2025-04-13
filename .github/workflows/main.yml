@@ -1,36 +1,27 @@
-name: Windows RDP
-
-on:
-  workflow_dispatch:
-
-jobs:
-  build:
-    runs-on: windows-latest
-
-    steps:
-      - name: Setup Ngrok
+- name: Start Ngrok in Background
         run: |
-          Invoke-WebRequest -Uri https://bin.equinox.io/c/bNyj1mQVY4c/ngrok-stable-windows-amd64.zip -OutFile ngrok.zip
-          Expand-Archive ngrok.zip -DestinationPath $env:USERPROFILE\ngrok
-          & "$env:USERPROFILE\ngrok\ngrok.exe" authtoken ${{ secrets.NGROK_AUTH_TOKEN }}
+          Start-Job { & "$env:USERPROFILE\ngrok\ngrok.exe" tcp 3389 }
 
-      - name: Enable RDP Access
+      - name: Show Connection Info (with Retry)
         run: |
-          Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
-          Set-ItemProperty -Path "HKLM:\System\CurrentControlSet\Control\Terminal Server" -Name "fDenyTSConnections" -Value 0
-          net user runneradmin YourPassword123!
+          $retries = 0
+          do {
+            Start-Sleep -Seconds 5
+            try {
+              $tunnel = Invoke-RestMethod -Uri http://127.0.0.1:4040/api/tunnels
+              $success = $true
+            } catch {
+              $retries++
+            }
+          } until ($success -or $retries -ge 10)
 
-      - name: Start Ngrok Tunnel
-        run: |
-          Start-Process "$env:USERPROFILE\ngrok\ngrok.exe" -ArgumentList "tcp", "3389" -WindowStyle Hidden
+          if (-not $success) {
+            Write-Error "Ngrok tunnel failed to start."
+            exit 1
+          }
 
-      - name: Show Connection Info
-        run: |
-          Start-Sleep -Seconds 15
-          $tunnel = Invoke-RestMethod -Uri http://127.0.0.1:4040/api/tunnels
-          $url = $tunnel.tunnels[0].public_url
-          $cleanUrl = $url -replace "tcp://", ""
+          $url = $tunnel.tunnels[0].public_url -replace "tcp://", ""
           Write-Output "`n*** RDP Connection Info ***"
-          Write-Output "IP:Port => $cleanUrl"
+          Write-Output "IP:Port => $url"
           Write-Output "Username: runneradmin"
           Write-Output "Password: YourPassword123!"
